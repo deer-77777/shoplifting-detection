@@ -25,7 +25,9 @@ from ultralytics import YOLO
 
 ROOT = Path(__file__).parent.parent
 TRAINED_MODEL_PATH = ROOT / "runs" / "shoplifting_yolo26" / "weights" / "best.pt"
-PERSON_MODEL_PATH = ROOT / "yolo26n.pt"
+MODELS_DIR = ROOT / "models"
+DEFAULT_PERSON_MODEL = "yolo26n"
+PERSON_MODEL_VARIANTS = ["yolo26n", "yolo26s", "yolo26m", "yolo26l", "yolo26x"]
 RAW_FRAMES_ROOT = ROOT / "raw_frames"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 TARGET_CLASSES = ["Shoplifting", "normal"]
@@ -41,14 +43,37 @@ app.add_middleware(
 
 if not TRAINED_MODEL_PATH.exists():
     raise SystemExit(f"Model not found at {TRAINED_MODEL_PATH}. Train first.")
-if not PERSON_MODEL_PATH.exists():
-    raise SystemExit(f"COCO model not found at {PERSON_MODEL_PATH}. Run any train script once to download yolo26n.pt.")
+if not (MODELS_DIR / f"{DEFAULT_PERSON_MODEL}.pt").exists():
+    raise SystemExit(
+        f"Default person detector not found at {MODELS_DIR}/{DEFAULT_PERSON_MODEL}.pt. "
+        f"Run download_models.py first."
+    )
 
 trained_model = YOLO(str(TRAINED_MODEL_PATH))
 trained_class_names = trained_model.names
-person_model = YOLO(str(PERSON_MODEL_PATH))
 print(f"Loaded trained model — classes: {trained_class_names}")
-print(f"Loaded person detector — using class 'person' (id 0)")
+
+# Lazy cache: only load each person-detection variant when it's first requested.
+_person_models: dict[str, YOLO] = {}
+
+
+def get_person_model(variant: str) -> YOLO:
+    if variant not in PERSON_MODEL_VARIANTS:
+        raise HTTPException(status_code=400, detail=f"Unknown model variant '{variant}'")
+    if variant not in _person_models:
+        path = MODELS_DIR / f"{variant}.pt"
+        if not path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model {variant}.pt not downloaded. Run download_models.py.",
+            )
+        print(f"Loading {variant} on first use...")
+        _person_models[variant] = YOLO(str(path))
+    return _person_models[variant]
+
+
+# Eagerly load only the default — others come on demand.
+get_person_model(DEFAULT_PERSON_MODEL)
 
 RAW_FRAMES_ROOT.mkdir(exist_ok=True)
 app.mount("/raw_frames", StaticFiles(directory=str(RAW_FRAMES_ROOT)), name="raw_frames")
@@ -143,6 +168,22 @@ def label_classes() -> dict:
     return {"classes": TARGET_CLASSES}
 
 
+@app.get("/label/models")
+def list_models() -> dict:
+    out = []
+    for variant in PERSON_MODEL_VARIANTS:
+        path = MODELS_DIR / f"{variant}.pt"
+        out.append(
+            {
+                "name": variant,
+                "available": path.exists(),
+                "size_mb": round(path.stat().st_size / (1024 * 1024), 1) if path.exists() else None,
+                "loaded": variant in _person_models,
+            }
+        )
+    return {"models": out, "default": DEFAULT_PERSON_MODEL}
+
+
 def _count_images(folder_path: Path) -> int:
     flat = sum(1 for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() in IMAGE_EXTS)
     images_dir = folder_path / "images"
@@ -204,13 +245,19 @@ def list_images(folder: str) -> dict:
 
 
 @app.post("/label/detect")
-def label_detect(folder: str = Form(...), name: str = Form(...), conf: float = Form(0.4)) -> dict:
+def label_detect(
+    folder: str = Form(...),
+    name: str = Form(...),
+    conf: float = Form(0.4),
+    model: str = Form(DEFAULT_PERSON_MODEL),
+) -> dict:
     """Run fresh person detection on the image, ignoring any existing label file."""
     img_path = find_image_path(folder, name)
+    selected_model = get_person_model(model)
 
     image = Image.open(img_path).convert("RGB")
     img_array = np.array(image)
-    results = person_model.predict(img_array, conf=conf, classes=[0], verbose=False)
+    results = selected_model.predict(img_array, conf=conf, classes=[0], verbose=False)
     r = results[0]
 
     boxes = []
@@ -231,6 +278,7 @@ def label_detect(folder: str = Form(...), name: str = Form(...), conf: float = F
         "image_height": image.height,
         "boxes": boxes,
         "source": "detect",
+        "model": model,
     }
 
 

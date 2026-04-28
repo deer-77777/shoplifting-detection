@@ -17,16 +17,20 @@ from ultralytics import YOLO
 ROOT = Path(__file__).parent
 DATA_YAML = ROOT / "Shoplifting-Detection" / "data.yaml"
 
-# Model weights. Use a larger variant (yolo26s, yolo26m, yolo26l, yolo26x)
-# if you have the GPU memory for it.
-MODEL_WEIGHTS = "yolo26n.pt"
+# Pick a variant. Larger = more accurate but more VRAM/time.
+#   yolo26n / yolo26s / yolo26m / yolo26l / yolo26x
+MODEL_VARIANT = "yolo26n"
+MODEL_WEIGHTS = ROOT / "models" / f"{MODEL_VARIANT}.pt"
 
 
 def main() -> None:
-    device = 0 if torch.cuda.is_available() else "cpu"
-    print(f"Training on device: {device}")
+    if not MODEL_WEIGHTS.exists():
+        raise SystemExit(f"{MODEL_WEIGHTS} not found. Run download_models.py first.")
 
-    model = YOLO(MODEL_WEIGHTS)
+    device = 0 if torch.cuda.is_available() else "cpu"
+    print(f"Training on device: {device}, base weights: {MODEL_WEIGHTS.name}")
+
+    model = YOLO(str(MODEL_WEIGHTS))
 
     model.train(
         data=str(DATA_YAML),

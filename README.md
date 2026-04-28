@@ -31,10 +31,13 @@ source .venv/bin/activate
 pip install ultralytics
 pip install -r api/requirements.txt
 
-# 2. Split dataset (train/valid/test out of the single Roboflow train/ folder)
+# 2. Download the YOLOv26 size variants (n/s/m/l/x) into models/
+python3 download_models.py
+
+# 3. Split dataset (train/valid/test out of the single Roboflow train/ folder)
 python3 split_dataset.py
 
-# 3. Frontend deps
+# 4. Frontend deps
 cd dashboard && npm install && cd ..
 ```
 
@@ -92,9 +95,17 @@ shoplifting-detection/
 │   └── test/{images,labels}/       (created by split_dataset.py)
 │
 ├── split_dataset.py                <- one-time data split (80/15/5)
+├── download_models.py              <- one-time fetch of yolo26 n/s/m/l/x weights
 ├── train.py                        <- full training (100 epochs, 640px) — GPU
 ├── train_cpu_quick.py              <- 5-epoch smoke run on 10% of data
 ├── detect_live.py                  <- RTSP IP-camera inference + alerting
+
+├── models/                         <- pre-trained yolo26 weights
+│   ├── yolo26n.pt   (5 MB)
+│   ├── yolo26s.pt   (20 MB)
+│   ├── yolo26m.pt   (42 MB)
+│   ├── yolo26l.pt   (51 MB)
+│   └── yolo26x.pt   (113 MB)
 │
 ├── api/                            <- FastAPI inference service
 │   ├── main.py

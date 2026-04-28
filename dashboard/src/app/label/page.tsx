@@ -41,7 +41,14 @@ type ImageInfo = {
 };
 type Box4 = [number, number, number, number];
 type Box = { id: number; bbox_xyxy: Box4; confidence: number | null; class_id: number | null };
-type BoxesResp = { image_width: number; image_height: number; boxes: Box[]; source: "detect" | "load" };
+type BoxesResp = {
+  image_width: number;
+  image_height: number;
+  boxes: Box[];
+  source: "detect" | "load";
+  model?: string;
+};
+type ModelInfo = { name: string; available: boolean; size_mb: number | null; loaded: boolean };
 
 const BOX_COLORS = ["#5b8def", "#f06292", "#ffb74d", "#81c784", "#ba68c8", "#4dd0e1", "#ff8a65", "#a1887f"];
 
@@ -61,19 +68,26 @@ export default function LabelPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [conf, setConf] = useState(0.4);
   const [preparing, setPreparing] = useState(false);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [model, setModel] = useState<string>("yolo26n");
 
   const fetchFolders = async () => {
     setError(null);
     try {
-      const [foldersRes, classesRes] = await Promise.all([
+      const [foldersRes, classesRes, modelsRes] = await Promise.all([
         fetch(`${API_URL}/label/folders`),
         fetch(`${API_URL}/label/classes`),
+        fetch(`${API_URL}/label/models`),
       ]);
       if (!foldersRes.ok) throw new Error(`folders ${foldersRes.status}`);
       const f = (await foldersRes.json()) as { folders: FolderInfo[] };
       const c = (await classesRes.json()) as { classes: string[] };
+      const m = (await modelsRes.json()) as { models: ModelInfo[]; default: string };
       setFolders(f.folders);
       setClasses(c.classes);
+      setModels(m.models);
+      // Only override the user's pick if they haven't changed it from the initial default.
+      setModel((prev) => (prev === "yolo26n" ? m.default : prev));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -123,7 +137,7 @@ export default function LabelPage() {
     }
   };
 
-  const runDetect = async (f: string, name: string, c: number) => {
+  const runDetect = async (f: string, name: string, c: number, m: string) => {
     setLoading(true);
     setError(null);
     setInfo(null);
@@ -134,6 +148,7 @@ export default function LabelPage() {
       form.append("folder", f);
       form.append("name", name);
       form.append("conf", String(c));
+      form.append("model", m);
       const res = await fetch(`${API_URL}/label/detect`, { method: "POST", body: form });
       if (!res.ok) throw new Error(`detect ${res.status}: ${await res.text()}`);
       applyResponse((await res.json()) as BoxesResp);
@@ -158,12 +173,12 @@ export default function LabelPage() {
     if (img.labelled) {
       runLoad(folder, img.name);
     } else {
-      runDetect(folder, img.name, conf);
+      runDetect(folder, img.name, conf, model);
     }
   };
 
   const handleReDetect = () => {
-    if (folder && selected) runDetect(folder, selected, conf);
+    if (folder && selected) runDetect(folder, selected, conf, model);
   };
 
   const handleDeleteBox = (id: number) => {
@@ -342,6 +357,22 @@ export default function LabelPage() {
                   <Typography variant="subtitle2" sx={{ flex: 1 }} noWrap>
                     {selected}
                   </Typography>
+                  <FormControl size="small" sx={{ minWidth: 140 }}>
+                    <InputLabel>Model</InputLabel>
+                    <Select
+                      label="Model"
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                    >
+                      {models.map((m) => (
+                        <MenuItem key={m.name} value={m.name} disabled={!m.available}>
+                          {m.name}
+                          {m.size_mb !== null && ` (${m.size_mb} MB)`}
+                          {!m.available && " — missing"}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                   <Box sx={{ width: 220 }}>
                     <Typography variant="caption" color="text.secondary">
                       Detection threshold: {conf.toFixed(2)}

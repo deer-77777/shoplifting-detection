@@ -14,13 +14,17 @@ from ultralytics import YOLO
 
 ROOT = Path(__file__).parent
 DATA_YAML = ROOT / "Shoplifting-Detection" / "data.yaml"
+MODEL_WEIGHTS = ROOT / "models" / "yolo26n.pt"
 
 
 def main() -> None:
+    if not MODEL_WEIGHTS.exists():
+        raise SystemExit(f"{MODEL_WEIGHTS} not found. Run download_models.py first.")
+
     device = 0 if torch.cuda.is_available() else "cpu"
     print(f"Quick training on device: {device}")
 
-    model = YOLO("yolo26n.pt")
+    model = YOLO(str(MODEL_WEIGHTS))
 
     model.train(
         data=str(DATA_YAML),
