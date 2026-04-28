@@ -35,6 +35,17 @@ This means **every person box is one of the two classes** — `normal` is not "b
 - Even when a `Shoplifting` person is present, you also expect `normal` boxes for the other shoppers/staff in the frame.
 - The dashboard's red ALERT chip only fires when at least one `Shoplifting` box is found, regardless of how many `normal` boxes accompany it.
 
+## Growing the dataset
+
+Once the system is deployed in a real store, the dataset can grow with frames captured from your own cameras. The labelling workflow ([LABELLING.md](LABELLING.md)) writes its output in the same YOLO format as the Roboflow export, organised under `raw_frames/<batch_name>/{images,labels}/`. Merging into the training set is then a plain copy:
+
+```bash
+cp raw_frames/<batch_name>/images/* Shoplifting-Detection/train/images/
+cp raw_frames/<batch_name>/labels/* Shoplifting-Detection/train/labels/
+```
+
+After the merge, re-run `train.py` (or first re-run `split_dataset.py` if you want the new frames spread across train/valid/test).
+
 ## Folder layout
 
 The Roboflow export ships with only `train/`. `split_dataset.py` materialises the `valid/` and `test/` folders the YAML expects.

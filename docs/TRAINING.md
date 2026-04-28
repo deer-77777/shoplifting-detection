@@ -12,7 +12,7 @@
 | `yolo26l` | slow | high | ~14 GB | Server-side, accuracy-first |
 | `yolo26x` | slowest | highest | ~22 GB | Offline batch / max mAP |
 
-The included scripts default to **`yolo26n.pt`**. Bumping to `s` or `m` is a one-line change and uses identical training arguments.
+All five variants ship pre-downloaded in `models/` after running `download_models.py`. The training scripts default to **`models/yolo26n.pt`**. Bumping to `s` or `m` is a one-line change (`MODEL_VARIANT = "yolo26m"` in `train.py`) and uses identical training arguments.
 
 ### YOLO pipelines (task heads)
 
@@ -34,12 +34,14 @@ Same backbone, different output head:
 
 | Script | Purpose | Time on CPU | Time on RTX 4060 (estimate) |
 |---|---|---|---|
+| `download_models.py` | One-time download of all five YOLOv26 variants into `models/` | ~5 min | same |
 | `train_cpu_quick.py` | Smoke test — 5 epochs, 320 px, 10 % data | ~5 min | ~30 s |
 | `train.py` | Real training — 100 epochs, 640 px, all data | weeks (impractical) | 2-4 h |
 
-Both scripts:
+The training scripts:
 - Auto-detect GPU vs CPU (`device=0` if CUDA available, else `cpu`).
-- Save weights to `runs/shoplifting_yolo26/weights/{best,last}.pt`.
+- Load base weights from `models/<variant>.pt` (no re-download).
+- Save outputs to `runs/shoplifting_yolo26/weights/{best,last}.pt`.
 - Use `exist_ok=True` so re-running overwrites the previous run.
 
 `best.pt` is the checkpoint with the highest validation mAP50-95 across all epochs; `last.pt` is the final epoch's weights.

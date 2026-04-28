@@ -1,12 +1,14 @@
 # Deployment
 
-There are three deployment surfaces, all reading the same `runs/shoplifting_yolo26/weights/best.pt`:
+Three deployment surfaces:
 
-1. **REST API** — `api/main.py` (FastAPI / Uvicorn)
-2. **Dashboard** — `dashboard/` (Next.js + MUI)
-3. **Live RTSP loop** — `detect_live.py`
+| Surface | Code | Models loaded | Purpose |
+|---|---|---|---|
+| **REST API** | `api/main.py` (FastAPI/Uvicorn) | `best.pt` + on-demand `models/yolo26*.pt` | Backs the dashboard's both pages (`/predict`, `/label/*`) |
+| **Dashboard** | `dashboard/` (Next.js+MUI) | — (calls API) | Two-page web UI: Predict + Labelling |
+| **Live RTSP loop** | `detect_live.py` | `best.pt` | Standalone IP-camera alerting |
 
-This document covers each, plus production hardening notes.
+For details on the labelling page UI and workflow, see [LABELLING.md](LABELLING.md). This document covers the runtime/deployment side.
 
 ---
 
@@ -24,8 +26,8 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ### Endpoints
 
 The API serves two surfaces:
-- `/predict` — single-image inference using the trained `best.pt`
-- `/label/*` — labelling assistance for new store-camera frames (uses pre-trained `yolo26n.pt` person detector)
+- `/predict` — single-image inference using the trained `best.pt` (2 classes: `Shoplifting`, `normal`)
+- `/label/*` — labelling assistance for new store-camera frames (uses pre-trained `yolo26*.pt` for person detection)
 
 #### `GET /health`
 
@@ -73,13 +75,34 @@ Curl example:
 curl -F "file=@frame.jpg" "http://localhost:8000/predict?conf=0.4" | jq .count
 ```
 
+#### Labelling endpoints (`/label/*`)
+
+A summary table — full details and example responses live in [LABELLING.md](LABELLING.md).
+
+| Method | Path | Form/query | Purpose |
+|---|---|---|---|
+| `GET` | `/label/classes` | — | Returns `["Shoplifting", "normal"]` |
+| `GET` | `/label/folders` | — | Lists subfolders of `raw_frames/` with `n_images` and `n_labels` counts |
+| `GET` | `/label/images` | `folder` | Lists images (in flat root + `images/` subdir) with their label state |
+| `GET` | `/label/models` | — | Lists available `yolo26*.pt` variants with size and load state |
+| `GET` | `/label/load` | `folder`, `name` | Reads saved YOLO label, returns pixel-coord boxes with class IDs |
+| `POST` | `/label/detect` | `folder`, `name`, `conf`, `model` | Runs person detection (COCO class 0) on the image |
+| `POST` | `/label/save` | JSON body | Writes YOLO label to `<folder>/labels/<stem>.txt` |
+| `POST` | `/label/prepare` | `folder` | Reorganises folder into Roboflow's `images/`+`labels/` layout |
+
+`/raw_frames/<folder>/<path>` serves image files as static content for the dashboard to render.
+
 ### CORS
 
 Currently allows only `http://localhost:3000`. Update [api/main.py](../api/main.py) `allow_origins=[...]` when deploying the dashboard to a real domain.
 
 ### Model loading
 
-The model is loaded **once at module import**. First request is fast; the cost is paid on process start (~1–2 s on CPU). The API will refuse to start if `best.pt` is missing — train first.
+- **`best.pt`** is loaded once at module import. The API refuses to start if it's missing — train first.
+- **`models/yolo26n.pt`** (the default labelling model) is also loaded eagerly at startup.
+- **`models/yolo26{s,m,l,x}.pt`** are lazy-loaded — only opened when the first request asks for that variant. They stay in memory afterwards. RAM cost: ~600 MB if all five are loaded.
+
+If you need to reduce RAM at the cost of latency, restart the API to clear the cache. There's no explicit unload endpoint.
 
 ---
 
@@ -97,41 +120,44 @@ npm run build && npm run start   # production
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Where the dashboard sends `POST /predict`. Set this when API and dashboard are on different hosts. |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Where the dashboard sends API calls. Set this when API and dashboard are on different hosts. |
 
-### UI
+### Two pages
+
+A shared `Nav` component switches between them:
+
+| Route | Page | Purpose |
+|---|---|---|
+| `/` | **Predict** | Upload a single image, see detections + ALERT chip |
+| `/label` | **Labelling** | Browse `raw_frames/`, run model-assisted person detection, assign classes, save YOLO labels |
+
+### Predict UI (`/`)
 
 ```
-┌─ AppBar ─────────────────────────────────────────┐
-│  Shoplifting Detection Dashboard                 │
+┌─ AppBar:  [ Predict ] [ Labelling ] ─────────────┐
 ├──────────────────────────────────────────────────┤
-│ ┌─ Card 1: Upload ──────────────────────────┐    │
+│ ┌─ Upload ──────────────────────────────────┐    │
 │ │ [ Choose image ]   filename.jpg (38 KB)  │    │
-│ │                                          │    │
 │ │ Confidence threshold: 0.25               │    │
 │ │ ▭━━━━━━━━━━━━━━━━━━━━━━━▭                │    │
-│ │                                          │    │
 │ │ [ Run detection ]                        │    │
 │ └──────────────────────────────────────────┘    │
-│                                                  │
-│ ┌─ Card 2: Result ──────────────────────────┐    │
+│ ┌─ Result ──────────────────────────────────┐    │
 │ │ Original              Annotated           │    │
 │ │ ┌──────┐              ┌──────┐            │    │
 │ │ │      │              │ □ □  │            │    │
 │ │ └──────┘              └──────┘            │    │
 │ └──────────────────────────────────────────┘    │
-│                                                  │
-│ ┌─ Card 3: Detections ──────────────────────┐    │
+│ ┌─ Detections ──────────────────────────────┐    │
 │ │ 2 found  [ALERT: Shoplifting suspected]  │    │
-│ │ ┌──┬──────────────┬───────┬──────────┐    │    │
-│ │ │# │ class        │ conf  │ bbox     │    │    │
-│ │ ├──┼──────────────┼───────┼──────────┤    │    │
-│ │ │1 │ Shoplifting  │ 83 %  │ x,y,x,y  │    │    │
-│ │ │2 │ normal       │ 64 %  │ x,y,x,y  │    │    │
-│ │ └──┴──────────────┴───────┴──────────┘    │    │
+│ │ Table of #, class, conf, bbox            │    │
 │ └──────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────┘
 ```
+
+### Labelling UI (`/label`)
+
+See [LABELLING.md](LABELLING.md) for the full panel-by-panel breakdown. Three columns: folder + image list / preview with overlay boxes / detection list with class dropdowns.
 
 State is local React state — refreshing the page clears it. There is no persistence layer.
 

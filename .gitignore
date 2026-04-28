@@ -1,4 +1,7 @@
 .venv
 .claude
-Shoplifting-Detection/
-raw_frames/
+Shoplifting-Detection
+raw_frames
+models
+runs
+__pycache__
