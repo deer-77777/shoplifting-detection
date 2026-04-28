@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import {
-  AppBar,
   Box,
   Button,
   Card,
@@ -18,11 +17,9 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  Toolbar,
   Typography,
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import VisibilityIcon from "@mui/icons-material/Visibility";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -91,13 +88,6 @@ export default function HomePage() {
 
   return (
     <>
-      <AppBar position="static" elevation={0}>
-        <Toolbar>
-          <VisibilityIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">Shoplifting Detection Dashboard</Typography>
-        </Toolbar>
-      </AppBar>
-
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Stack spacing={3}>
           <Card>

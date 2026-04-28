@@ -23,6 +23,10 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
 ### Endpoints
 
+The API serves two surfaces:
+- `/predict` — single-image inference using the trained `best.pt`
+- `/label/*` — labelling assistance for new store-camera frames (uses pre-trained `yolo26n.pt` person detector)
+
 #### `GET /health`
 
 Cheap liveness probe. Returns the loaded class map.
