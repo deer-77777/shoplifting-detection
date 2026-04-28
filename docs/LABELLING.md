@@ -157,6 +157,26 @@ Five size variants ship in `models/`:
 | `yolo26l` | 51 MB | ~600 ms | GPU, accuracy-first |
 | `yolo26x` | 113 MB | ~1.2 s | GPU only, maximum recall |
 
+### Prerequisite — `models/` must be populated
+
+All five `.pt` files must be present in `models/` before starting the API. Run
+the one-time download:
+
+```bash
+python3 download_models.py
+```
+
+It's safe to re-run — already-present files with valid size are skipped, and
+anything missing or partial gets fetched. If you ever delete the `models/`
+directory, this is also the recovery command.
+
+If you launch the API with `models/yolo26n.pt` missing, it exits with:
+
+```
+SystemExit: Default person detector not found at .../models/yolo26n.pt.
+Run download_models.py first.
+```
+
 ### Lazy loading
 
 Only `yolo26n` is loaded into memory when the API starts. The other variants

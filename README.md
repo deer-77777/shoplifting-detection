@@ -32,7 +32,7 @@ source .venv/bin/activate
 pip install ultralytics
 pip install -r api/requirements.txt
 
-# 2. Download the YOLOv26 size variants (n/s/m/l/x) into models/
+# 2. Download the YOLOv26 size variants (n/s/m/l/x) into models/  (~230 MB, ~5 min)
 python3 download_models.py
 
 # 3. Split dataset (train/valid/test out of the single Roboflow train/ folder)
@@ -41,6 +41,8 @@ python3 split_dataset.py
 # 4. Frontend deps
 cd dashboard && npm install && cd ..
 ```
+
+`download_models.py` is **safe to re-run**. It skips files that already exist with a valid size, and re-downloads anything that's missing or partial — so if `models/` ever gets emptied, deleted, or interrupted mid-download, just run it again.
 
 ### Train a model
 
@@ -165,6 +167,19 @@ shoplifting-detection/
 | [docs/TRAINING.md](docs/TRAINING.md) | Model variants, hyperparameters, evaluation, GPU/CPU expectations |
 | [docs/LABELLING.md](docs/LABELLING.md) | Labelling workflow: model-assisted, prepare-for-training, raw_frames structure |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | REST API spec, dashboard, RTSP, production hardening |
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Dashboard shows "Failed to fetch" / "No folders in raw_frames/" | API not reachable on port 8000 | Check uvicorn is running and listening (`ss -tlnp \| grep 8000`). Restart with `uvicorn api.main:app --port 8000 --reload`. |
+| API exits at startup with "Default person detector not found at .../models/yolo26n.pt" | `models/` is empty or partially populated | Run `python3 download_models.py`. Safe to re-run — it only fetches what's missing. |
+| API exits with "Model not found at runs/.../best.pt" | No trained model on disk | Run `python3 train_cpu_quick.py` (smoke) or `python3 train.py` (real) first. |
+| Labelling page shows green rows after files were deleted from disk | React state cached from previous fetch | Click **Reload** in the dashboard, or refresh the browser. |
+| `npm run build` fails with "Module not found: '@mui/icons-material/...'" | Icon name typo (e.g. `DeleteOutline` instead of `DeleteOutlined`) | MUI v9 renamed many icons. Check `node_modules/@mui/icons-material/` for the exact filename. |
+| Training is taking days on CPU | This is expected — full training is impractical without a GPU | Use `train_cpu_quick.py` for pipeline verification, then run `train.py` on a GPU machine. |
 
 ---
 

@@ -34,9 +34,27 @@ Same backbone, different output head:
 
 | Script | Purpose | Time on CPU | Time on RTX 4060 (estimate) |
 |---|---|---|---|
-| `download_models.py` | One-time download of all five YOLOv26 variants into `models/` | ~5 min | same |
+| `download_models.py` | Downloads all five YOLOv26 variants into `models/` | ~5 min (network bound) | same |
 | `train_cpu_quick.py` | Smoke test — 5 epochs, 320 px, 10 % data | ~5 min | ~30 s |
 | `train.py` | Real training — 100 epochs, 640 px, all data | weeks (impractical) | 2-4 h |
+
+### `download_models.py` — pre-flight
+
+Run this before either training script:
+
+```bash
+python3 download_models.py
+```
+
+It writes weights to `models/` using a direct `urllib` download (~230 MB total) and:
+- **Skips files that already exist** with a valid size, so re-running is cheap.
+- **Detects partial / corrupted downloads** (anything < 1 MB is treated as bad) and re-fetches them.
+- **Continues past individual failures** — one variant failing (e.g. transient 503) doesn't abort the others.
+- **Exits non-zero** if any variant is still missing at the end, so you can wrap it in CI.
+
+Both training scripts also depend on `models/` being populated — they exit with a clear error if `models/yolo26n.pt` (or whatever `MODEL_VARIANT` you set) is missing.
+
+### Training scripts
 
 The training scripts:
 - Auto-detect GPU vs CPU (`device=0` if CUDA available, else `cpu`).
