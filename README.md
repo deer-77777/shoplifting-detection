@@ -180,6 +180,9 @@ shoplifting-detection/
 | Labelling page shows green rows after files were deleted from disk | React state cached from previous fetch | Click **Reload** in the dashboard, or refresh the browser. |
 | `npm run build` fails with "Module not found: '@mui/icons-material/...'" | Icon name typo (e.g. `DeleteOutline` instead of `DeleteOutlined`) | MUI v9 renamed many icons. Check `node_modules/@mui/icons-material/` for the exact filename. |
 | Training is taking days on CPU | This is expected — full training is impractical without a GPU | Use `train_cpu_quick.py` for pipeline verification, then run `train.py` on a GPU machine. |
+| Training on GPU fails with `CUDA error: no kernel image is available for execution on the device` | PyTorch wheel doesn't include kernels for your GPU's compute capability | Reinstall a torch version that does — e.g. for V100 (sm_70): `pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121`. See [docs/TRAINING.md](docs/TRAINING.md). |
+| `Downloading https://github.com/...yolo26n.pt` appears mid-training even though `models/` has it | Ultralytics' AMP self-check loads `yolo26n.pt` by basename from CWD | `train.py` already symlinks `models/yolo26n.pt` to `./yolo26n.pt` for you. If you skipped it, run `download_models.py` first. |
+| Training fails on an air-gapped GPU box | Ultralytics tries to fetch `yolo26n.pt` and `Arial.ttf` | Run `download_models.py` on a connected machine, copy `models/` + `assets/` over with the rest of the project. See [docs/TRAINING.md](docs/TRAINING.md) — Offline section. |
 
 ---
 

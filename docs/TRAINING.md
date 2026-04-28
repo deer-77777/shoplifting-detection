@@ -66,6 +66,55 @@ The training scripts:
 
 ---
 
+## Offline / air-gapped training
+
+Ultralytics tries to download two things at training time even if you've supplied your own weights:
+
+| What | Why | How `train.py` handles it |
+|---|---|---|
+| `yolo26n.pt` (~5 MB) | AMP self-check loads it by basename, regardless of the weights you actually train with | `_ensure_offline_assets()` symlinks `models/yolo26n.pt` to `./yolo26n.pt` so the CWD lookup hits before any download is attempted |
+| `Arial.ttf` (~750 KB) | Drawing class labels on plotted batches | `_ensure_offline_assets()` copies `assets/Arial.ttf` (fetched by `download_models.py`) into `~/.config/Ultralytics/Arial.ttf` on first run |
+
+### Workflow
+
+```
+┌─ Connected machine ────────────────────────────────────────────┐
+│   git clone <project>                                          │
+│   pip install ultralytics                                      │
+│   python3 download_models.py    # fills models/ + assets/      │
+│   tar czf bundle.tgz models/ assets/ Shoplifting-Detection/    │
+│           train.py train_cpu_quick.py split_dataset.py ...     │
+└────────────────────────────────────────────────────────────────┘
+                                │  scp / USB / etc.
+                                ▼
+┌─ Offline machine ──────────────────────────────────────────────┐
+│   tar xzf bundle.tgz                                           │
+│   pip install ultralytics torch ...   (use a local mirror)     │
+│   python3 train.py                    ← no network calls       │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### Verifying offline-readiness
+
+After `download_models.py`, you should have:
+
+```
+models/yolo26n.pt      models/yolo26s.pt      models/yolo26m.pt
+models/yolo26l.pt      models/yolo26x.pt      assets/Arial.ttf
+```
+
+`train.py` prints what it staged on first run:
+
+```
+  staged AMP weight: yolo26n.pt -> models/yolo26n.pt
+  staged font: /home/user/.config/Ultralytics/Arial.ttf
+Training on device: 0, base weights: yolo26n.pt
+```
+
+If you see `Downloading https://github.com/...` after this, something else is missing — open an issue with the URL.
+
+---
+
 ## Hyperparameters
 
 The values in `train.py` (and rationale):

@@ -25,7 +25,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 MODELS_DIR = ROOT / "models"
+ASSETS_DIR = ROOT / "assets"
 RELEASE_URL = "https://github.com/ultralytics/assets/releases/download/v8.4.0"
+FONT_URL = "https://ultralytics.com/assets/Arial.ttf"
 VARIANTS = ["yolo26n", "yolo26s", "yolo26m", "yolo26l", "yolo26x"]
 
 # A weight file smaller than this is almost certainly a partial / corrupted
@@ -79,21 +81,51 @@ def download(variant: str) -> bool:
     return True
 
 
+def download_font() -> bool:
+    """Fetch Arial.ttf so plot rendering works offline.
+
+    Ultralytics caches it in ~/.config/Ultralytics/. We stash a copy in
+    assets/ alongside the project so it can be moved to an offline machine.
+    train.py copies it to the cache dir on first run.
+    """
+    target = ASSETS_DIR / "Arial.ttf"
+    if target.exists() and target.stat().st_size > 100_000:
+        size_kb = target.stat().st_size / 1024
+        print(f"  [skip] Arial.ttf       {size_kb:6.1f} KB  (already present)")
+        return True
+    print(f"  [get ] Arial.ttf      <- {FONT_URL}")
+    try:
+        urllib.request.urlretrieve(FONT_URL, target)
+    except Exception as exc:
+        print(f"  ! download failed: {exc}")
+        return False
+    size_kb = target.stat().st_size / 1024
+    print(f"    -> {target.name} ({size_kb:.1f} KB)")
+    return True
+
+
 def main() -> int:
     MODELS_DIR.mkdir(exist_ok=True)
-    print(f"Target: {MODELS_DIR}\n")
+    ASSETS_DIR.mkdir(exist_ok=True)
+    print(f"Models  -> {MODELS_DIR}")
+    print(f"Assets  -> {ASSETS_DIR}\n")
 
     successes = 0
     for variant in VARIANTS:
         if download(variant):
             successes += 1
+    font_ok = download_font()
 
-    print(f"\nDone. {successes}/{len(VARIANTS)} variants OK.")
+    print(f"\nDone. {successes}/{len(VARIANTS)} variants OK. Font: {'OK' if font_ok else 'MISSING'}")
     print("\nFiles in models/:")
     for p in sorted(MODELS_DIR.glob("*.pt")):
         print(f"  {p.name:14s}  {p.stat().st_size / (1024 * 1024):6.1f} MB")
+    print("\nFiles in assets/:")
+    for p in sorted(ASSETS_DIR.iterdir()) if ASSETS_DIR.exists() else []:
+        if p.is_file():
+            print(f"  {p.name:14s}  {p.stat().st_size / 1024:6.1f} KB")
 
-    return 0 if successes == len(VARIANTS) else 1
+    return 0 if (successes == len(VARIANTS) and font_ok) else 1
 
 
 if __name__ == "__main__":
