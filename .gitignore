@@ -5,3 +5,4 @@ raw_frames
 models
 runs
 __pycache__
+*.tar.gz

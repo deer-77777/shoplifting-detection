@@ -72,6 +72,8 @@ Two pages:
 - **<http://localhost:3000>** — *Predict.* Upload an image, get boxes + alert chip.
 - **<http://localhost:3000/label>** — *Labelling.* Pick a folder under `raw_frames/`, the page runs person detection and lets you assign a class to each detection. Saves YOLO label files compatible with the training set.
 
+> **Offline / air-gapped PC?** The dashboard needs `node_modules` (~500 MB), which is impractical to `npm install` without internet. Build it as a Docker image on a connected machine, ship the `.tar.gz`, and run it alongside the natively-installed API. See [docs/DEPLOYMENT.md — Offline deployment](docs/DEPLOYMENT.md#offline-deployment).
+
 ### Add new images for labelling
 
 ```bash

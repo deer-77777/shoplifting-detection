@@ -116,11 +116,13 @@ npm run dev          # development, hot reload, port 3000
 npm run build && npm run start   # production
 ```
 
+For air-gapped machines without `npm install` access, see [Offline deployment](#offline-deployment) below — the dashboard ships as a Docker image, the API runs natively from the pre-installed Python packages.
+
 ### Configuration
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Where the dashboard sends API calls. Set this when API and dashboard are on different hosts. |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Where the dashboard sends API calls. Set this when API and dashboard are on different hosts. Baked in at build time (it's a `NEXT_PUBLIC_*` var); rebuild the image with `--build-arg NEXT_PUBLIC_API_URL=...` to change it. |
 
 ### Two pages
 
@@ -199,6 +201,94 @@ The script forces `rtsp_transport=tcp` (more reliable than UDP); if your camera 
 ### Hardware
 
 Real-time inference at 25-30 FPS requires a CUDA GPU for the `n` and `s` model sizes. CPU-only typically delivers 2-5 FPS at 640 px — fine for offline analysis, not for live alerting unless you accept heavy frame skipping.
+
+---
+
+## Offline deployment
+
+For an offline PC that has Python packages pre-installed but **no Node.js / `npm install` capability**, the supported pattern is:
+
+- **API** — run natively with `uvicorn` (uses the pre-installed Python packages).
+- **Dashboard** — run from a Docker image built on a connected machine, transferred as a `.tar.gz`, and loaded with `docker load`.
+
+Both must run on the same offline host so the browser can reach the API at the default `http://localhost:8000`. If you split them across hosts, rebuild the dashboard image with `--build-arg NEXT_PUBLIC_API_URL=http://<api-host>:8000` (the value is baked into the JS bundle at build time, not read at runtime).
+
+### Prerequisites on the offline PC
+
+| Component | Required | Notes |
+|---|---|---|
+| Python 3.12 + venv | yes | with `fastapi`, `uvicorn[standard]`, `python-multipart`, `ultralytics`, `opencv-python`, `pillow` already installed |
+| Docker engine | yes | tested with Docker 24+. GPU not needed for the dashboard. |
+| Project files | yes | Source tree, `models/`, `runs/.../best.pt`, `assets/`, and `Shoplifting-Detection/` data — the API loads weights and serves `raw_frames/` from these paths. |
+| Node.js / `npm` | **no** | The dashboard runs entirely from the Docker image. |
+
+### One-time: build the image on a connected machine
+
+```bash
+# In the project root, on a machine with internet
+cd dashboard
+docker build -t shoplifting-dashboard:latest .
+
+# Archive the image (~150–250 MB compressed)
+docker save shoplifting-dashboard:latest | gzip > shoplifting-dashboard.tar.gz
+```
+
+The build uses Next.js' `output: "standalone"` mode, so the final image is small (no `node_modules`, no source maps).
+
+### Transfer to the offline PC
+
+Copy two things via USB / `scp` / whatever transport you have:
+
+1. `shoplifting-dashboard.tar.gz` — the Docker image archive.
+2. The rest of the project tree (source, `models/`, `runs/.../best.pt`, `assets/`, `Shoplifting-Detection/`). The API needs these on disk; the dashboard image does not.
+
+### One-time: load the image on the offline PC
+
+```bash
+gunzip -c shoplifting-dashboard.tar.gz | docker load
+docker images shoplifting-dashboard      # confirm it loaded
+```
+
+### Day-to-day: run both services
+
+```bash
+# Terminal A — API, natively, using the pre-installed Python packages
+cd <project-root>
+source .venv/bin/activate
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+# Terminal B — Dashboard, from the loaded Docker image
+docker run -d --name dashboard --restart unless-stopped \
+  -p 3000:3000 shoplifting-dashboard:latest
+```
+
+Open <http://localhost:3000> on the offline PC.
+
+### Updating the dashboard
+
+When the dashboard source changes:
+
+```bash
+# On the connected machine
+cd dashboard
+docker build -t shoplifting-dashboard:latest .
+docker save shoplifting-dashboard:latest | gzip > shoplifting-dashboard.tar.gz
+
+# Transfer the new .tar.gz, then on the offline PC:
+docker stop dashboard && docker rm dashboard
+gunzip -c shoplifting-dashboard.tar.gz | docker load
+docker run -d --name dashboard --restart unless-stopped \
+  -p 3000:3000 shoplifting-dashboard:latest
+```
+
+### Troubleshooting (offline-specific)
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Dashboard loads but every request fails with "Failed to fetch" | API not running, or running on a different host than `localhost` | Confirm `uvicorn` is up (`ss -tlnp \| grep 8000`). If API is on a different host, rebuild the image with `--build-arg NEXT_PUBLIC_API_URL=http://<host>:8000` and re-transfer. |
+| `docker load` errors with "no such file" | Archive transferred incomplete | Re-copy `shoplifting-dashboard.tar.gz`, verify size matches the source. |
+| Container exits immediately | Port 3000 already in use, or arch mismatch | Check `docker logs dashboard`. If arch mismatch, rebuild on a host matching the offline PC's CPU arch (or use `docker buildx --platform linux/amd64`). |
+| API can't find `best.pt` | Project tree not transferred, or `runs/` excluded | Confirm `runs/shoplifting_yolo26/weights/best.pt` exists on the offline PC. `runs/` is gitignored — you must copy it explicitly. |
 
 ---
 
